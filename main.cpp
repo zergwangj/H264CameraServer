@@ -26,33 +26,31 @@ typedef struct
     int height;
     int fps;
     GstClockTime timestamp;
+    GstBuffer *buffer;
 } MyContext;
 
 static void need_data(GstElement *appsrc, guint unused, MyContext *ctx)
 {
-    GstBuffer *buffer;
-    guint size;
     GstFlowReturn ret;
-
-    size = ctx->width * ctx->height * 2;
-    buffer = gst_buffer_new_allocate(NULL, size, NULL);
 
     AVFrame *capFrame = ctx->device.Capture();
     if (capFrame != NULL) {
-        gst_buffer_fill(buffer, 0, capFrame->data[0], capFrame->width * capFrame->height * 2);
+        gst_buffer_fill(ctx->buffer, 0, capFrame->data[0], capFrame->width * capFrame->height * 2);
     }
     av_frame_unref(capFrame);
+    av_frame_free(&capFrame);
 
-    GST_BUFFER_PTS(buffer) = ctx->timestamp;
-    GST_BUFFER_DURATION(buffer) = gst_util_uint64_scale_int(1, GST_SECOND, ctx->fps);
-    ctx->timestamp += GST_BUFFER_DURATION(buffer);
+    GST_BUFFER_PTS(ctx->buffer) = ctx->timestamp;
+    GST_BUFFER_DURATION(ctx->buffer) = gst_util_uint64_scale_int(1, GST_SECOND, ctx->fps);
+    ctx->timestamp += GST_BUFFER_DURATION(ctx->buffer);
 
-    g_signal_emit_by_name(appsrc, "push-buffer", buffer, &ret);
+    g_signal_emit_by_name(appsrc, "push-buffer", ctx->buffer, &ret);
 }
 
-static void delete_context(MyContext *context)
+static void delete_context(MyContext *ctx)
 {
-    delete context;
+    gst_buffer_remove_all_memory(ctx->buffer);
+    delete ctx;
 }
 
 static void media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *media, gpointer user_data)
@@ -75,7 +73,8 @@ static void media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *media, g
     ctx->width = 640;
     ctx->height = 480;
     ctx->fps = 30;
-    ctx->device.Create("dshow", "video=USB Camera", 640, 480, 30);
+    ctx->device.Create("dshow", "video=USB Camera", ctx->width, ctx->height, ctx->fps);
+    ctx->buffer = gst_buffer_new_allocate(NULL, ctx->width * ctx->height * 2, NULL);
     g_object_set_data_full(G_OBJECT(media), "my-extra-data", ctx, (GDestroyNotify)delete_context);
 
     g_signal_connect(appsrc, "need-data", (GCallback)need_data, ctx);
