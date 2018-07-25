@@ -94,7 +94,7 @@ CameraDevice::~CameraDevice() {
     Close();
 }
 
-bool CameraDevice::Create(const char *format, const char *device,
+bool CameraDevice::Open(const char *format, const char *device,
                           int width, int height, int fps) {
 
     if (isReady_) {

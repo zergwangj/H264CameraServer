@@ -33,15 +33,13 @@ extern "C" {
 }
 #endif
 
-
-
 class CameraDevice {
 public:
     CameraDevice();
 
     virtual ~CameraDevice();
 
-    bool Create(const char *format, const char *device, int width, int height, int fps);
+    bool Open(const char *format, const char *device, int width, int height, int fps);
 
     void Close();
 
