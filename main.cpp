@@ -28,6 +28,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 
 
 static CameraDevice g_cameraDevice;
+static int g_cameraDeviceRef = 0;
 
 typedef struct
 {
@@ -58,8 +59,13 @@ static void delete_context(MyContext *ctx)
     LOG(info) << "Delete context...";
     gst_buffer_remove_all_memory(ctx->buffer);
     delete ctx;
-    g_cameraDevice.Close();
-    LOG(info) << "Camera closed";
+    g_cameraDeviceRef--;
+    if (g_cameraDeviceRef <= 0)
+    {
+        g_cameraDevice.Close();
+        LOG(info) << "Camera closed";
+        g_cameraDeviceRef = 0;
+    }
 }
 
 static void media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *media, gpointer user_data)
@@ -80,10 +86,20 @@ static void media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *media, g
     LOG(info) << "Media configure...";
     ctx = new MyContext();
     ctx->timestamp = 0;
-    if (g_cameraDevice.Open("dshow", "video=USB Camera", FRAME_WIDTH, FRAME_HEIGHT, FRAME_FPS))
+    if (g_cameraDeviceRef <= 0)
     {
-        LOG(info) << "Camera opened";
+        g_cameraDeviceRef = 0;
+        if (g_cameraDevice.Open("dshow", "video=USB Camera", FRAME_WIDTH, FRAME_HEIGHT, FRAME_FPS))
+        {
+            LOG(info) << "Camera opened";
+            g_cameraDeviceRef++;
+        }
     }
+    else
+    {
+        g_cameraDeviceRef++;
+    }
+
     ctx->buffer = gst_buffer_new_allocate(NULL, FRAME_WIDTH * FRAME_HEIGHT * 2, NULL);
     g_object_set_data_full(G_OBJECT(media), "my-extra-data", ctx, (GDestroyNotify)delete_context);
 
@@ -115,7 +131,7 @@ int main(int argc, char *argv[])
     g_object_unref(mounts);
     gst_rtsp_server_attach(server, NULL);
 
-    LOG(info) << "Camera streaming server runing...";
+    LOG(info) << "Camera streaming server running...";
     g_main_loop_run(loop);
 
     return 0;
