@@ -18,6 +18,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include <gst/gst.h>
 #include <gst/rtsp-server/rtsp-server.h>
 #include "CameraDevice.hpp"
+#include "Logger.hpp"
 
 #define DEFAULT_RTSP_PORT   "554"
 
@@ -25,26 +26,25 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #define FRAME_HEIGHT        480
 #define FRAME_FPS           30
 
+
+static CameraDevice g_cameraDevice;
+
 typedef struct
 {
-    CameraDevice device;
-    int deviceRef;
     GstClockTime timestamp;
     GstBuffer *buffer;
 } MyContext;
-
-static MyContext g_context = {};
 
 static void need_data(GstElement *appsrc, guint unused, MyContext *ctx)
 {
     GstFlowReturn ret;
 
-    AVFrame *capFrame = ctx->device.Capture();
+    AVFrame *capFrame = g_cameraDevice.Capture();
     if (capFrame != NULL) {
         gst_buffer_fill(ctx->buffer, 0, capFrame->data[0], capFrame->width * capFrame->height * 2);
+        av_frame_unref(capFrame);
+        av_frame_free(&capFrame);
     }
-    av_frame_unref(capFrame);
-    av_frame_free(&capFrame);
 
     GST_BUFFER_PTS(ctx->buffer) = ctx->timestamp;
     GST_BUFFER_DURATION(ctx->buffer) = gst_util_uint64_scale_int(1, GST_SECOND, FRAME_FPS);
@@ -55,13 +55,11 @@ static void need_data(GstElement *appsrc, guint unused, MyContext *ctx)
 
 static void delete_context(MyContext *ctx)
 {
+    LOG(info) << "Delete context...";
     gst_buffer_remove_all_memory(ctx->buffer);
-    ctx->deviceRef--;
-    if (ctx->deviceRef <= 0)
-    {
-        ctx->device.Close();
-        ctx->deviceRef = 0;
-    }
+    delete ctx;
+    g_cameraDevice.Close();
+    LOG(info) << "Camera closed";
 }
 
 static void media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *media, gpointer user_data)
@@ -79,19 +77,12 @@ static void media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *media, g
                                        "height", G_TYPE_INT, FRAME_HEIGHT,
                                        "framerate", GST_TYPE_FRACTION, FRAME_FPS, 1, NULL), NULL);
 
-    ctx = &g_context;
+    LOG(info) << "Media configure...";
+    ctx = new MyContext();
     ctx->timestamp = 0;
-    if (ctx->deviceRef <= 0)
+    if (g_cameraDevice.Open("dshow", "video=USB Camera", FRAME_WIDTH, FRAME_HEIGHT, FRAME_FPS))
     {
-        ctx->deviceRef = 0;
-        if (ctx->device.Open("dshow", "video=USB Camera", FRAME_WIDTH, FRAME_HEIGHT, FRAME_FPS))
-        {
-            ctx->deviceRef++;
-        }
-    }
-    else
-    {
-        ctx->deviceRef++;
+        LOG(info) << "Camera opened";
     }
     ctx->buffer = gst_buffer_new_allocate(NULL, FRAME_WIDTH * FRAME_HEIGHT * 2, NULL);
     g_object_set_data_full(G_OBJECT(media), "my-extra-data", ctx, (GDestroyNotify)delete_context);
@@ -124,6 +115,7 @@ int main(int argc, char *argv[])
     g_object_unref(mounts);
     gst_rtsp_server_attach(server, NULL);
 
+    LOG(info) << "Camera streaming server runing...";
     g_main_loop_run(loop);
 
     return 0;

@@ -129,7 +129,7 @@ bool CameraDevice::Open(const char *format, const char *device,
     av_dict_set(&options, "video_size", args, 0);
     av_dict_set(&options, "pixel_format", "yuyv422", 0);
     av_dict_set(&options, "rtbufsize", "2000M", 0);
-    av_dict_set(&options, "thread", "6", 0);
+//    av_dict_set(&options, "thread", "6", 0);
     if (avformat_open_input(&formatContext_, device, inputFormat, &options) < 0) {
         LOG(error) << "Cannot open device:" << device;
         goto cleanup;
